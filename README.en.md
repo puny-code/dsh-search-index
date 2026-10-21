@@ -11,7 +11,7 @@
 
 # dsh-search-index
 
-> Sidebar **search index** for DSH web: adds a **"Search"** entry at the sidebar footer whose floating panel toggles between **title search ↔ content search**; content mode groups results **by session** (title + snippet) and filters by **user / reply / tool**. Ships its **own index** (independent of DSH's built-in full-text index) with incremental sync, a non-destructive rebuild, and snapshot export/import.
+> Sidebar **search index** for DSH web: **takes over the sidebar section's own search button** (next to the「会话」section title); its floating panel toggles between **title search ↔ content search**; content mode groups results **by session** (title + snippet) and filters by **user / reply / tool**. Ships its **own index** (independent of DSH's built-in full-text index) with incremental sync, a non-destructive rebuild, and snapshot export/import.
 
 > **This package owns search and the index only.** The session-history viewer (the old "archived sessions" panel) moved to **`dsh-session-steward`**. This package still **reads** the official archive set to keep archived sessions out of the index, but no longer **writes** it — the archive set has exactly one writer: the steward.
 
@@ -21,7 +21,7 @@ A cordis client + host plugin assembled via the `dsh plugin` command and a bundl
 
 **Predecessor: `dsh-session-search-toggle`.** That version relied on `defineStore` from `@deepseek-ai/dsh-client-runtime` to provide the settings-row seat. DSH 0.1.2 renamed and restructured the client engine packages (`dsh-client-runtime` → `dsh-client-store`), so the old code could not load on the new host — and no single artifact could serve both releases.
 
-**This release (`dsh-search-index` 0.6.6) targets DSH 0.2.0–0.2.1-rc.2 as its main line** (peer `0.2.0-rc.1 || 0.2.0-rc.2 || 0.2.1-rc.1 || 0.2.1-rc.2`). Historical host lines are served by separate version lines: DSH 0.1.7 is served by 0.5.7 (npm dist-tag `dsh-0.1.7`, `compat/0.1.7` branch), and earlier 0.1.1/0.1.2 hosts by the legacy artifact, which is frozen. Historical background:
+**This release (`dsh-search-index` 0.7.0) targets DSH 0.2.0–0.2.1-rc.2 as its main line** (peer `0.2.0-rc.1 || 0.2.0-rc.2 || 0.2.1-rc.1 || 0.2.1-rc.2`). Historical host lines are served by separate version lines: DSH 0.1.7 is served by 0.5.7 (npm dist-tag `dsh-0.1.7`, `compat/0.1.7` branch), and earlier 0.1.1/0.1.2 hosts by the legacy artifact, which is frozen. Historical background:
 
 - **One artifact, runtime-adaptive**: the same `lib/client.js` loads on both 0.1.1-rc.2 and 0.1.2-rc.1 with **no version-string branching anywhere**. The client bundle only `require`s `react` / `react-dom`, both of which sit in the shared module table of either release.
 - **Neither engine package is imported**: it imports neither `dsh-client-runtime` nor `dsh-client-store`, so that rename cannot affect it.
@@ -31,9 +31,9 @@ A cordis client + host plugin assembled via the `dsh plugin` command and a bundl
 > **▼ DSH version support**
 > | DSH version | Status | Carrier and key difference |
 > | --- | --- | --- |
-> | 0.2.0-rc.1 | ✅ | **this release 0.6.6**; peer/engines = `0.2.0-rc.1 || 0.2.0-rc.2 || 0.2.1-rc.1 || 0.2.1-rc.2`, zero code changes (pure-caller consumption of the slots/locale/configForms seats) |
-> | 0.2.1-rc.1 | ✅ | **this release 0.6.6**; from 0.2.1-a.2 the host renamed `webRuntime` to `webStartup` — this release injects `webStartup` with a dual-name fallback chain |
-> | 0.2.1-rc.2 | ✅ | **this release 0.6.6**; declaration-level enum addendum (all host peers npm-verified on rc.2), zero code changes |
+> | 0.2.0-rc.1 | ✅ | **this release 0.7.0**; peer/engines = `0.2.0-rc.1 || 0.2.0-rc.2 || 0.2.1-rc.1 || 0.2.1-rc.2`, zero code changes (pure-caller consumption of the slots/locale/configForms seats) |
+> | 0.2.1-rc.1 | ✅ | **this release 0.7.0**; from 0.2.1-a.2 the host renamed `webRuntime` to `webStartup` — this release injects `webStartup` with a dual-name fallback chain |
+> | 0.2.1-rc.2 | ✅ | **this release 0.7.0**; declaration-level enum addendum (all host peers npm-verified on rc.2), zero code changes |
 > | 0.1.7-rc.1+ | ✅ | 0.5.7 (dist-tag `dsh-0.1.7`); configForms resolves by entry id, older hosts fall back to settingsScope bound by namespace |
 > | 0.1.1-rc.2 | ✅ (legacy artifact, frozen) | the store engine lives in `@deepseek-ai/dsh-client-runtime/client` |
 > | 0.1.2-rc.1 | ✅ (legacy artifact, frozen) | the engine was renamed to `@deepseek-ai/dsh-client-store`; this plugin imports neither |
@@ -56,7 +56,9 @@ The settings namespace stays `switch-search` (**storage key kept stable, no migr
 - **Result ordering**: **Relevance / Time** on the right of the same row — "Time" orders by **session last activity**, newest first; the choice persists locally across reloads. Hits carry both the document timestamp and the session clock, so a client can re-sort on its own.
 - **Realtime titles**: the host subscribes to `session/event`, so a rename (`session/title`) folds into the index immediately instead of waiting for the next sync (30s by default).
 - **Settings card**: Settings → Plugins gains a **"Search Index"** card — enable toggle, default search mode, sync/retention/index-dir knobs, and the index-lifecycle block (status, non-destructive rebuild, snapshot export/import). When it reports "N archived session(s) excluded" it also **points at the owner**: browsing and disposing of archived sessions belongs to **dsh-session-steward**, and this plugin only reads the archive set. When that plugin is absent the hint says so — the host decides by resolving it from the plugin's own module graph, and any inconclusive probe falls back to the neutral wording rather than reporting "not installed" for a package it merely could not check.
-- **Invoke key and platform-native key hints**: both the sidebar entry and the panel's key bar show the invoke chord — `⌘K` on macOS, `Ctrl K` on Windows/Linux, decided from the running system; the panel's close key is platform-native too (`esc` on macOS, `Esc` elsewhere). Detection falls back **UA-CH → `navigator.platform` → UA string**, so a privacy mode never demotes a Mac user to the Windows glyphs. The hint and the binding share one owner: the chord printed on the cap is the chord the `keydown` handler matches.
+- **No new button**: the plugin no longer adds an entry of its own. Clicking the sidebar section's **existing** search button (`button.dshp-mini-button[aria-label="全局搜索"]`) opens this plugin's panel: its click is intercepted in the DOM capture phase, so the host's own search panel never opens alongside.
+- **Hotkey removed**: the `⌘K` / `Ctrl K` chord is gone in this release (it never fired reliably, and it duplicated the button entry). The only key cap left in the panel footer is the real one — close with `Esc` (`esc` on macOS). Detection falls back **UA-CH → `navigator.platform` → UA string**, so a privacy mode never demotes a Mac user to the Windows glyphs.
+- **Frosted panel**: the panel now carries `backdrop-filter: blur(9px)` plus `color-mix(in srgb, var(--dsw-specific-sidebar-fill) 30%, transparent)`, fixing the old transparent background that let the page text bleed through the panel.
 - **Jump to session**: clicking a result opens that session, landing on the context around the hit.
 
 ## UI preview
@@ -98,7 +100,7 @@ dsh plugin --profile web add github:drscrewdriver/dsh-search-index#master
 dsh web
 ```
 
-After install a **"Search"** button appears at the sidebar footer; Settings → Plugins gains the **"Search Index"** card.
+After install, the sidebar section's own search button opens this plugin's panel; Settings → Plugins gains the **"Search Index"** card.
 
 > ⚠️ **GitHub reachability**: installing via github: requires access to github.com; if your network is restricted, set up a working proxy or mirror first, otherwise add may stall while fetching.
 
@@ -125,7 +127,7 @@ src/
 │   ├── archive-source.ts  # reads the archive set to keep archived sessions out of the index
 │   └── snapshot.ts     # snapshot export/import
 └── client/
-    └── index.ts        # browser half: sidebar.footer.action entry + floating panel + settings.general.item row
+    └── index.ts        # browser half: sidebar search-button hijack + floating panel + plugins.bundle.config card
 ```
 
 - **Host half**: registers the fenced HTTP route `/switch-search/api` (`list-sessions` / `content-search` / `search-status`), with a browser-trust fence identical to the DSH `/api` gateway (loopback Host or trustedHosts; cross-site refused).
@@ -135,7 +137,8 @@ src/
 
 ## Relation to the official sidebar search
 
-- The official sidebar search box lives in `sidebar.workspaces` (a single slot); an external plugin **cannot replace it**. This plugin adds a **separate entry** at the sidebar footer via `sidebar.footer.action`; the two coexist.
+- The official sidebar search box lives in `sidebar.workspaces` (a single slot); an external plugin **cannot replace it**. This plugin patches nothing: the browser half intercepts the click of the native search button next to the section title in the **capture phase** — `stopImmediatePropagation()` stops the host's own search panel from opening, and this plugin's panel takes the click. When the host re-renders the button or renames it, matching falls back from `aria-label` (`搜索` / `search`) to the first button of that group.
+- This release **registers no `sidebar.footer.action` seat** (the bottom-bar button of 0.6.x and earlier is gone), so the sidebar footer returns to the host's and third parties' own default layout.
 - The official content search hard-codes `user/message` + `assistant/message` in apiproxy; this plugin searches its own index and opens up `tool/call` + `tool/result`, enabling tool-level search.
 
 ## Compatibility and privacy

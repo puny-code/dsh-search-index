@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0 (2026-10-21)
+
+- **入口改为接管原生搜索按钮**：不再注册 `sidebar.footer.action` 席位，侧栏底部那枚自建按钮整块删除（含 `.dsws_root` / `.dsws_button*` 全套样式与 `[class*=footerActions]`、`.lc-ov-entry` 第三方矫正）。改为在**文档捕获阶段**拦下「会话」分区标题旁的原生搜索按钮（`button.dshp-mini-button`，`aria-label` 匹配 `搜索` / `search`，失配回退该分组首个按钮）：`stopImmediatePropagation()` 让宿主（dsh-projects）自己的 `onClick` 不执行、其搜索面板不弹出，本插件面板接管点击。宿主重绘按钮不会让监听失效（监听挂在 document 上，不挂元素）。面板改由 `createRoot` 挂到 body 上自建的容器里，因此**没有 slots 服务也能启用**。
+- **热键移除**：删除 `⌘K` / `Ctrl K` `keydown` 绑定、`isInvokeChord`、`KeyChordEvent` 与 `modLabel`/`altLabel`/`shiftLabel`/`enterLabel`/`invokeLabel` 整套和弦词表（实测唤出键并不能可靠触发，且与按钮入口重复）。面板底部的唤出键帽随之删除，**只保留真实的 `Esc` 关闭键**（macOS `esc` / 其他 `Esc`）。
+- **面板毛玻璃底板**：`.dsws_trigger` 增加 `backdrop-filter: blur(9px)`（含 `-webkit-` 前缀）与 `background-color: color-mix(in srgb, var(--dsw-specific-sidebar-fill) 30%, transparent)`，保留原 `background: var(--dsw-specific-tip)` 作为 `color-mix` 不支持时的回退。修复「面板背景透明、弹窗文字与下层正文叠在一起读不清」。
+- **测试同步**：`client-store` 改为断言**零席位注册**（并补 `react-dom/client` → `createRoot` 与 `document.body` stub）；`client-platform` 重写为「平台词表 + 热键已消失」的正反断言（`isInvokeChord` 计数必须为 0、keydown 监听必须只剩 1 个、`"dsws_kbd"` 键帽必须只剩 1 个、捕获期 click 监听必须恰好 1 个）。
+- **lockfile 修复**：`pnpm-lock.yaml` 补 `|| 0.2.1-rc.2` 的 peer specifier（manifest 早已声明，lockfile 落后导致 `--frozen-lockfile` 安装必失败），顺带带上 pnpm 11 的 `libc` 元数据。
+
 ## 0.6.6 (2026-10-18)
 
 - hosts: 追加 0.2.1-rc.2 声明面枚举（34/34 @deepseek-ai/* 宿主 peer 逐包 npm 实测 rc.2 在版；本插件不触 ctx.web provider 与 conversation.input.model.label 槽，代码零改动，纯元数据发版；农场 rc.2 格挂账待命）

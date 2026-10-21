@@ -79,8 +79,8 @@ export declare const SETTINGS_SIBLING_SEAT = "settings.plugins.tab";
  * ledger projection). */
 export declare const inject: string[];
 /**
- * Client plugin body: dictionaries, the plugin settings card, and the
- * (disabled upstream) footer search panel entry.
+ * Client plugin body: dictionaries, the settings card, and the search panel
+ * that hijacks the sidebar section's own search button.
  * @param ctx - client plugin context (slots, optional locale/settingsScope/sessions).
  */
 export declare function apply(ctx: Context): void;

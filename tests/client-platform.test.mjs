@@ -1,32 +1,27 @@
 #!/usr/bin/env node
 /**
- * The shortcut hint and the shortcut binding have one owner, and the hint
- * tells the truth on every platform.
+ * The platform vocabulary — and the absence of the hotkey it used to feed.
  *
  * Why this test exists
  * --------------------
  * Two failure modes are invisible in a Windows browser and therefore sail
  * through a GUI check:
  *
- * 1. **One hard-coded vocabulary.** The panel advertised `⌘K` to everyone, so
- *    the shortcut was undiscoverable on Windows and Linux. Worse, the old
+ * 1. **One hard-coded vocabulary.** The old footer advertised `⌘K` to everyone,
+ *    so its hint was undiscoverable on Windows and Linux. Worse, the old
  *    detection was a single `navigator.platform` test — a deprecated API that
  *    returns an empty string in some privacy configurations, silently
  *    degrading every Mac user to the Windows vocabulary.
- * 2. **A hint that disagrees with the handler.** A footer promising `⌘K`
- *    while the keydown handler matches `Ctrl+K` looks correct in a screenshot
- *    and does nothing when pressed.
+ * 2. **A hint that disagrees with the handler.** Which is why 0.7.0 deleted the
+ *    chord instead of fixing it: the advertised shortcut did not fire, and a
+ *    key cap for a key nothing listens to is a lie the user discovers by
+ *    pressing it. The Escape cap is the one that stayed — it is real.
  *
  * The React render path is not exercised by this suite (see the note in
  * `client-store.test.mjs`), so the behaviour of the pure helpers is tested by
- * importing `src/client/platform.ts` through tsx, and the *wiring* — that the
- * bundle actually calls those helpers from the chip and from the listener — is
- * pinned structurally against the built bundle.
- *
- * What it proves: the vocabulary is platform-correct, the chord test agrees
- * with the chip it advertises, and the bundle binds the chord it shows.
- * What it does NOT prove: that a keypress opens the panel in a real browser —
- * that stays a GUI check.
+ * importing `src/client/platform.ts` through tsx, and the *wiring* is pinned
+ * structurally against the built bundle — including the negative assertions
+ * that keep the chord from creeping back in.
  *
  * Usage: node --import tsx tests/client-platform.test.mjs
  */
@@ -35,15 +30,10 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { detectPlatform, isInvokeChord, platformLabels } from '../src/client/platform.ts'
+import { detectPlatform, platformLabels } from '../src/client/platform.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const BUNDLE = join(HERE, '..', 'lib', 'client.js')
-
-/** Build a keydown payload with the given key and modifiers. */
-function key(k, mods = {}) {
-  return { key: k, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods }
-}
 
 /** Count non-overlapping matches of a regex in a string. */
 function count(source, pattern) {
@@ -83,52 +73,18 @@ const win = platformLabels('win32')
 const linux = platformLabels('linux x86_64')
 const unknown = platformLabels('')
 
-assert.equal(mac.invokeLabel, '⌘K', 'macOS advertise the symbol chord')
 assert.equal(mac.escLabel, 'esc', 'macOS spell Escape in lower case')
-assert.equal(mac.altLabel, '⌥', 'macOS draw the option glyph')
-assert.equal(mac.shiftLabel, '⇧', 'macOS draw the shift glyph')
 assert.equal(mac.isMac, true, 'macOS must be detected as macOS')
 
-assert.equal(win.invokeLabel, 'Ctrl K', 'Windows must spell the chord out')
 assert.equal(win.escLabel, 'Esc', 'Windows must capitalise Escape')
-assert.equal(win.altLabel, 'Alt', 'Windows must spell Alt')
 assert.equal(win.isWindows, true, 'Win32 must be detected as Windows')
 
-assert.equal(linux.invokeLabel, 'Ctrl K', 'Linux takes the non-Mac vocabulary')
 assert.equal(linux.isMac, false, 'Linux is not macOS')
 
 // The degradation contract: an unreadable platform must never render a glyph
 // that is meaningless to the user reading it.
-assert.equal(unknown.invokeLabel, 'Ctrl K', 'an unknown platform must degrade to the legible vocabulary')
 assert.equal(unknown.escLabel, 'Esc', 'an unknown platform must degrade to the legible vocabulary')
 assert.equal(unknown.isMac, false, 'an unknown platform must not claim to be macOS')
-
-/** --------------------------------------------------------- chord agreement */
-
-assert.equal(isInvokeChord(key('k', { metaKey: true }), true), true, '⌘K must fire on macOS')
-assert.equal(isInvokeChord(key('K', { metaKey: true }), true), true, '⌘K must fire with a shifted key value too')
-assert.equal(isInvokeChord(key('k', { ctrlKey: true, metaKey: true }), true), false, '⌘K must not fire while Ctrl is also held')
-assert.equal(isInvokeChord(key('k', { altKey: true, metaKey: true }), true), false, '⌥⌘K is a different chord')
-assert.equal(isInvokeChord(key('k', { shiftKey: true, metaKey: true }), true), false, '⇧⌘K is a different chord')
-assert.equal(isInvokeChord(key('j', { metaKey: true }), true), false, 'other keys must not fire')
-
-assert.equal(isInvokeChord(key('k', { ctrlKey: true }), false), true, 'Ctrl+K must fire off macOS')
-assert.equal(isInvokeChord(key('k', { metaKey: true }), false), false, '⌘K must not fire off macOS')
-assert.equal(isInvokeChord(key('k', { ctrlKey: true, metaKey: true }), false), false, 'Ctrl+K must not fire while Meta is also held')
-assert.equal(isInvokeChord(key('k'), false), false, 'a bare K must not fire')
-assert.equal(isInvokeChord(key('Escape'), false), false, 'Escape must not fire the invoke chord')
-
-// The invariant that ties the two halves together: for every platform, an
-// event carrying exactly the modifier that platform's label names must be
-// accepted. This is what stops the chip and the handler from drifting.
-for (const labels of [mac, win, linux, unknown]) {
-  const event = labels.isMac ? key('k', { metaKey: true }) : key('k', { ctrlKey: true })
-  assert.equal(
-    isInvokeChord(event, labels.isMac),
-    true,
-    `the chord advertised as ${labels.invokeLabel} must be the chord the handler accepts`,
-  )
-}
 
 /** ------------------------------------------- wiring, pinned in the bundle */
 
@@ -145,22 +101,29 @@ assert.equal(count(source, /function detectPlatform\(/g), 1, 'the platform detec
 assert.ok(count(source, /detectPlatform\(/g) >= 2, 'detection must be defined and consumed')
 assert.ok(count(source, /platformLabels\(/g) >= 2, 'the label vocabulary must be derived through one helper')
 
-// The decisive wiring assertion: `isInvokeChord` must appear at least twice —
-// its definition plus the keydown handler that calls it. One occurrence means
-// the helper shipped but nothing listens for the chord.
-assert.ok(
-  count(source, /isInvokeChord\(/g) >= 2,
-  'the advertised chord must be the chord the keydown handler actually matches',
+// The hotkey is GONE (0.7.0). These are the assertions that keep it gone:
+// a reinstated chord matcher, or a second keydown listener, would show up here
+// even though nothing on screen would look different.
+assert.equal(
+  count(source, /isInvokeChord\(/g),
+  0,
+  'the invoke chord must not come back: nothing in the bundle may match ⌘K / Ctrl+K',
 )
-assert.equal(count(source, /addEventListener\("keydown"/g), 2, 'exactly two keydown listeners: Escape and the invoke chord')
+assert.equal(count(source, /modLabel/g), 0, 'the chord vocabulary must not come back either')
+assert.equal(count(source, /addEventListener\("keydown"/g), 1, 'exactly one keydown listener: Escape, to close the panel')
 
-// Three key caps: the sidebar entry, the footer invoke hint, the footer Escape
-// hint. Plus two stylesheet selectors.
-assert.equal(count(source, /"dsws_kbd"/g), 3, 'three key caps must be rendered')
-assert.ok(count(source, /dsws_kbd/g) >= 5, 'the key-cap stylesheet must ship with its consumers')
+// One key cap: the footer Escape hint. Plus two stylesheet selectors.
+assert.equal(count(source, /"dsws_kbd"/g), 1, 'one key cap must be rendered (Escape)')
+assert.ok(count(source, /dsws_kbd/g) >= 3, 'the key-cap stylesheet must ship with its one consumer')
 
-// Both faces of the chord must be produced by the same derivation.
-assert.equal(count(source, /\$\{modLabel\}K/g), 1, 'the macOS chord face must be derived from the modifier label')
-assert.equal(count(source, /\$\{modLabel\} K/g), 1, 'the Windows/Linux chord face must be derived from the same label')
+// The borrowed button (0.7.0): the bundle must look the sidebar section's
+// native search button up by class and intercept its click, and it must not
+// ship the old footer-entry markup any more.
+assert.ok(count(source, /dshp-section-actions/g) >= 2, 'the borrowed action group must be located in the bundle')
+assert.ok(count(source, /dshp-mini-button/g) >= 2, 'the borrowed button must be matched by class')
+assert.equal(count(source, /addEventListener\("click"/g), 1, 'the click hijack must be bound exactly once')
+assert.ok(count(source, /createRoot/g) >= 1, 'the panel host must mount into its own React root')
+assert.equal(count(source, /dsws_root/g), 0, 'the old footer entry wrapper must be gone')
+assert.equal(count(source, /dsws_button/g), 0, 'the old footer entry button must be gone')
 
-console.log(`client-platform: ok (4 vocabularies, ${count(source, /isInvokeChord\(/g)} chord references, 3 key caps)`)
+console.log(`client-platform: ok (4 vocabularies, 0 chord references, ${count(source, /"dsws_kbd"/g)} key cap)`)

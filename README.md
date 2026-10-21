@@ -11,7 +11,7 @@
 
 # dsh-search-index
 
-> DSH web 侧边栏**搜索索引**：在侧边栏底部新增 **"搜索"** 入口，浮层面板一键在 **标题搜索 ↔ 内容搜索** 间切换；内容模式按**会话聚合**展示标题与命中片段，并按 **用户 / 回复 / 工具** 分类筛选。自带**独立索引**（不依赖 DSH 官方全文索引），支持增量同步、非破坏性整理与快照导入导出。
+> DSH web 侧边栏**搜索索引**：**接管侧边栏「会话」分区标题旁自带的搜索按钮**，浮层面板一键在 **标题搜索 ↔ 内容搜索** 间切换；内容模式按**会话聚合**展示标题与命中片段，并按 **用户 / 回复 / 工具** 分类筛选。自带**独立索引**（不依赖 DSH 官方全文索引），支持增量同步、非破坏性整理与快照导入导出。
 
 > **本包只管搜索与索引。** 会话历史的查看与清理（原"归档会话"面板）已迁至 **`dsh-session-steward`（会话管家）** 的「病案室」页签；本包仍会**读取**官方归档集合以把已归档会话排除出索引，但**不再写入**它——归档集合只有一个写方：会话管家。契约见 `dsh-归档文件格式契约-20260914.md`。
 
@@ -21,7 +21,7 @@
 
 **前身：`dsh-session-search-toggle`。** 那个版本依赖 `@deepseek-ai/dsh-client-runtime` 的 `defineStore` 提供设置行座位。DSH 0.1.2 把客户端引擎包改名/重构（`dsh-client-runtime` → `dsh-client-store`），旧写法在新宿主上无法加载——同一个插件没法用一份产物同时兼容两版。
 
-**本版（`dsh-search-index` 0.6.6）以 DSH 0.2.0–0.2.1-rc.2 为主线**（peer `0.2.0-rc.1 || 0.2.0-rc.2 || 0.2.1-rc.1 || 0.2.1-rc.2`）。历史宿主线的支持由独立版本线承担：DSH 0.1.7 用 0.5.7（npm dist-tag `dsh-0.1.7`，`compat/0.1.7` 分支），更早的 0.1.1/0.1.2 用旧版产物，不再随本版演进。历史背景：
+**本版（`dsh-search-index` 0.7.0）以 DSH 0.2.0–0.2.1-rc.2 为主线**（peer `0.2.0-rc.1 || 0.2.0-rc.2 || 0.2.1-rc.1 || 0.2.1-rc.2`）。历史宿主线的支持由独立版本线承担：DSH 0.1.7 用 0.5.7（npm dist-tag `dsh-0.1.7`，`compat/0.1.7` 分支），更早的 0.1.1/0.1.2 用旧版产物，不再随本版演进。历史背景：
 
 - **单一产物，运行时自适应**：同一份 `lib/client.js` 在 0.1.1-rc.2 与 0.1.2-rc.1 上都能加载，**没有任何版本号字符串分支**。客户端 bundle 只 `require` `react` / `react-dom`，两者都在两版的共享模块表内。
 - **两个引擎包都不导入**：既不 import `dsh-client-runtime`，也不 import `dsh-client-store`，因此**不受那次改名影响**。
@@ -31,9 +31,9 @@
 > **▼ DSH 版本适配**
 > | DSH 版本 | 状态 | 载体与关键差异 |
 > | --- | --- | --- |
-> | 0.2.0-rc.1 | ✅ | **本版 0.6.6**；peer/engines = `0.2.0-rc.1 || 0.2.0-rc.2 || 0.2.1-rc.1 || 0.2.1-rc.2`，代码零修改（纯 caller 消费 slots/locale/configForms 席位） |
-> | 0.2.1-rc.1 | ✅ | **本版 0.6.6**；0.2.1-a.2 起宿主把 `webRuntime` 更名 `webStartup`，本版注入 `webStartup` 并走双名回退链 |
-> | 0.2.1-rc.2 | ✅ | **本版 0.6.6**；声明面补票（宿主 peer 全部 npm 实测 rc.2 在版），代码零改动 |
+> | 0.2.0-rc.1 | ✅ | **本版 0.7.0**；peer/engines = `0.2.0-rc.1 || 0.2.0-rc.2 || 0.2.1-rc.1 || 0.2.1-rc.2`，代码零修改（纯 caller 消费 slots/locale/configForms 席位） |
+> | 0.2.1-rc.1 | ✅ | **本版 0.7.0**；0.2.1-a.2 起宿主把 `webRuntime` 更名 `webStartup`，本版注入 `webStartup` 并走双名回退链 |
+> | 0.2.1-rc.2 | ✅ | **本版 0.7.0**；声明面补票（宿主 peer 全部 npm 实测 rc.2 在版），代码零改动 |
 > | 0.1.7-rc.1+ | ✅ | 0.5.7（dist-tag `dsh-0.1.7`）；configForms 以 entry id 取句柄，旧宿主回退 settingsScope 按命名空间绑定 |
 > | 0.1.1-rc.2 | ✅（旧版产物，冻结） | store 引擎在 `@deepseek-ai/dsh-client-runtime/client` |
 > | 0.1.2-rc.1 | ✅（旧版产物，冻结） | 引擎改名 `@deepseek-ai/dsh-client-store`；本插件两个都不导入 |
@@ -56,12 +56,14 @@ dsh web   # 重启
 - **结果排序**：同一行右侧可切 **相关度 / 时间**——「时间」按**会话最后活动时间**倒序，最近动过的排前面；偏好记在本地，跨刷新保留。命中同时下发文档时间与会话时间，前端可自行二次排序。
 - **标题实时**：宿主订阅 `session/event`，改名（`session/title`）即刻折进索引，不必等下一轮同步（默认 30s）。
 - **设置卡片**：设置 → 插件新增 **"搜索索引"** 卡片——启用开关、默认搜索模式、独立索引的同步/保留份数/索引目录，以及索引生命周期块（状态、非破坏性整理、快照导出导入）。卡片报「已排除 N 个已归档会话」时会**就地指路**：归档会话的浏览与清理由 **「会话管家」**（`dsh-session-steward`）负责，本插件只读归档集合；未安装时那句提示会明说「当前未安装」——判定由宿主从**插件自身的模块图**解析得出，解析不出结果时走中性文案，**绝不把"读不到"报成"未安装"**。
-- **唤出键与平台化按键提示**：侧边栏入口右侧与面板底部按键条都显示唤出键——macOS 渲染 `⌘K`、Windows/Linux 渲染 `Ctrl K`，按运行系统就地判定；面板内的关闭键同样平台化（macOS `esc` / 其他 `Esc`）。平台识别走 **UA-CH → `navigator.platform` → UA 串**三级降级，隐私模式下不会把 Mac 用户降级成 Windows 符号。**提示与绑定同源**：胶囊上写的和弦就是 `keydown` 实际匹配的和弦，不存在"提示一个键、响应另一个键"。
+- **零新增按钮**：不再往侧边栏塞自己的入口。点击侧边栏「会话」分区标题旁**原有的**搜索按钮（`button.dshp-mini-button[aria-label="全局搜索"]`）即打开本插件的面板——在 DOM 捕获阶段接管该按钮的 click，宿主自带的搜索面板因此不会同时弹出。
+- **热键已移除**：`⌘K` / `Ctrl K` 唤出键在本版删除（原实现里它并不能可靠触发，且与按钮入口重复）。面板底部保留唯一的真实键位提示——关闭键 `Esc`（macOS 渲染 `esc`），平台识别走 **UA-CH → `navigator.platform` → UA 串**三级降级，隐私模式下不会把 Mac 用户降级成 Windows 符号。
+- **面板毛玻璃底板**：面板加 `backdrop-filter: blur(9px)` + `color-mix(in srgb, var(--dsw-specific-sidebar-fill) 30%, transparent)`，修掉原来「面板背景透明、弹窗文字与下层正文叠在一起读不清」的问题。
 - **点击直达**：搜索结果点击跳转打开对应会话，定位到命中内容所在上下文。
 
 ## 界面预览
 
-侧边栏搜索入口与搜索面板布局示意：
+搜索面板布局示意（入口已改为接管侧边栏原有搜索按钮）：
 
 ![侧边栏搜索入口](assets/content-search-example.png)
 ![搜索面板](assets/new-index.png)
@@ -125,7 +127,7 @@ src/
 │   ├── archive-source.ts  # 读归档集合，把已归档会话排除出索引
 │   └── snapshot.ts     # 快照导出/导入
 └── client/
-    └── index.ts        # 浏览器半：sidebar.footer.action 入口 + 浮层面板 + settings.general.item 配置行
+    └── index.ts        # 浏览器半：接管侧边栏搜索按钮 + 浮层面板 + plugins.bundle.config 配置卡
 ```
 
 - **宿主半**：注册 fenced HTTP 路由 `/switch-search/api`（`list-sessions` / `content-search` / `search-status`），浏览器信任围栏与 DSH `/api` 网关一致（loopback Host 或 trustedHosts，拒绝 cross-site）。
@@ -135,7 +137,8 @@ src/
 
 ## 与官方侧边栏搜索的关系
 
-- 官方侧边栏的搜索框在 `sidebar.workspaces`（single slot），外部插件**无法替换**；本插件在侧边栏底部**新增独立入口** `sidebar.footer.action`，二者并存、互不干扰。
+- 官方侧边栏的搜索框在 `sidebar.workspaces`（single slot），外部插件**无法替换**；本插件不改宿主源码，只在浏览器半用**捕获阶段的 click 拦截**接管「会话」分区标题旁那个原生搜索按钮：拦下即 `stopImmediatePropagation()`，宿主自己的搜索面板不会弹出，本插件面板接管点击。宿主把按钮重绘/换标签时按 `aria-label`（`搜索` / `search`）匹配，匹配不到再退回该分组第一个按钮。
+- 本版**不再注册 `sidebar.footer.action` 席位**（0.6.x 及以前那枚底栏按钮已删除），因此侧栏底栏恢复宿主与第三方各自的默认布局。
 - 官方内容搜索在 apiproxy 硬编码只搜 `user/message` + `assistant/message`；本插件用自建索引，放开 `tool/call` + `tool/result`，实现工具级筛选。
 
 ## 兼容性与隐私

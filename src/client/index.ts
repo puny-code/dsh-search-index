@@ -1,16 +1,19 @@
 /**
  * dsh-search-index client half.
  *
- * One registration:
- * - a `sidebar.footer.action` entry (currently disabled upstream) that opens
- *   the floating title/content search panel.
+ * No slot is registered for the entry any more. The plugin owns exactly one
+ * DOM-visible thing — the floating title/content search panel, rendered into
+ * its own root — and one borrowed control: the sidebar section's own search
+ * button, whose click it intercepts in the document capture phase so the
+ * host's native global-search panel never opens (see `SearchHost`).
  *
- * The `locale` and config services are consumed structurally: when
- * the host release lacks them the footer falls back to the bundled zh
- * dictionary and the host-composition config layer.
+ * The `locale` and config services are consumed structurally: when the host
+ * release lacks them the panel falls back to the bundled zh dictionary and the
+ * host-composition config layer.
  */
 import { createElement, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from 'react'
 import { createPortal } from 'react-dom'
+import { createRoot } from 'react-dom/client'
 import type { Context } from 'cordis'
 import { SWITCH_SEARCH_SETTINGS_NAMESPACE, type SwitchSearchConfig } from '../config.ts'
 // 0.1.7：插件族共用设置节（dsh-thinking-levels 持有并声明 `dsh-family.tab`
@@ -18,7 +21,7 @@ import { SWITCH_SEARCH_SETTINGS_NAMESPACE, type SwitchSearchConfig } from '../co
 import { callHost, callHostAny, openSessionThrough, type HostContentHit, type HostIndexStatus, type HostSessionItem, type HostSortMode, type SwitchSessionsService, type SwitchUiWorkspaceService } from './host-api.ts'
 import { SearchSettingsCard, type SwitchCardScope } from './card.tsx'
 import { NS, de, en, es, fr, it, ru, translate, zh, type LocaleKey } from './locales.ts'
-import { LABELS, isInvokeChord } from './platform.ts'
+import { LABELS } from './platform.ts'
 
 /** ------------------------------------------------------------------ types */
 
@@ -153,11 +156,6 @@ function sortHits(items: readonly HostContentHit[], sortBy: HostSortMode): HostC
   return [...items].sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
-/** The footer-action owner share (structural subset). */
-interface SwitchFooterProps {
-  wide: boolean
-}
-
 /** Last panel mode used this web session (mode memory, not persisted). */
 let lastPanelMode: 'title' | 'content' = 'title'
 
@@ -174,33 +172,16 @@ declare module 'cordis' {
 /** ------------------------------------------------------------------ styles */
 
 const CSS = `
-/* 侧栏 footer 槽位公约（2026-09-26；2026-10-01 收紧行距并强制居中）：一行多
-   入口（第三方 dsh-context 等）会互相挤占 —— 宿主 .footerActions 是 nowrap
-   flex 行。这里允许容器换行，并把本插件入口钉成独占一整行（flex-basis:100%）；
-   其余入口（含第三方）自然落到后续行。justify-content:center 让行内所有入口
-   （含不占满行的）统一居中；row-gap:0 配合入口自身 32px 高度压缩纵向占位。
-   类名用 [class*=] 中段匹配：宿主是 CSS Module 哈希类名（实测形如
-   hHd-Xa_footerActions —— <hash>_<name>，哈希在前），中段跨版本稳定。 */
-[class*="footerActions"]{flex-wrap:wrap;justify-content:center;row-gap:0;height:auto;min-height:0}
-/* —— 第三方矫正：dsh-context「上下文洞察」入口（2026-10-01）——
-   .lc-ov-entry 按"独占整行"设计（width:calc(100% + 4px)、无 justify-content、
-   42px 高、不对称 padding），与本槽位公约（每个入口独占一行、行内居中、32px）
-   冲突，表现为文字靠左、纵向松散。这里按公约强制矫正；:not() 排除收起轨道的
-   36px 圆钮形态。lc-ov-* 是 dsh-context 源码硬编码类名（非构建哈希），跨版本
-   稳定（实测 0.56.1 / 0.60.0 规则一致）。 */
-.lc-ov-entry:not(.lc-ov-entry-rail){width:auto!important;flex:0 0 100%!important;min-width:0!important;justify-content:center!important;height:32px!important;margin:0!important;padding:0 10px!important}
-.lc-ov-entry-label{flex:0 1 auto!important}
-.dsws_root{box-sizing:border-box;position:relative;display:flex;align-items:center;justify-content:center;flex:0 0 100%;width:100%;min-width:0;container-type:inline-size}
-/* 收起轨道：回落自然宽度（根类的 100% 基准只属于宽栏形态），放弃收缩。 */
-.dsws_rootRail{flex:none;width:auto;container-type:normal}
-/* 高度 32px（内容 22px 行高 + 上下各 5px）：宿主默认 42px 的上下裕度在
-   多行堆叠后过于松散；左右内边距对称（10px/10px），否则整行居中时按钮内容
-   会因不对称 padding 向左偏 1px。 */
-.dsws_button{box-sizing:border-box;display:inline-flex;align-items:center;flex:0 0 auto;min-width:0;gap:8px;height:32px;border:none;border-radius:12px;background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer;padding:0 10px;font-family:inherit;font-size:14px;line-height:22px;white-space:nowrap;overflow:hidden;transition:background-color 160ms ease-out,color 160ms ease-out}
-.dsws_buttonRail{flex:none;width:28px;height:28px;padding:0;gap:0;justify-content:center;border-radius:50%}
-.dsws_button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.dsws_button svg{flex:none}
-.dsws_trigger{position:fixed;z-index:2147483000;left:50%;top:50%;transform:translate(-50%,-50%);width:520px;max-width:calc(100vw - 24px);max-height:min(72vh,640px);box-sizing:border-box;background:var(--dsw-specific-tip);border:1px solid var(--dsw-alias-border-l1);border-radius:12px;box-shadow:var(--dsw-shadow-lv3,0 8px 28px rgba(0,0,0,.16));overflow:hidden;display:flex;flex-direction:column;font-family:Inter,var(--dsw-font-family)}
+/* 0.7.0：本插件不再注册 sidebar.footer.action 席位，改为接管侧边栏分区标题
+   旁自带的搜索按钮（见 index.ts 的 SearchHost）。因此为那个「独占整行入口」
+   服务的规则全部删除：footerActions 行容器公约、lc-ov-entry 等第三方矫正、
+   以及入口按钮那套（root / button 系列）样式。侧栏 footer 恢复宿主与第三方
+   各自的默认布局。 */
+/* 面板（.dsws_trigger）改为毛玻璃底板：原来只有 --dsw-specific-tip 实色，
+   在部分宿主主题下该变量解析为空 → 面板全透明，弹窗文字与下层正文叠在一起
+   无法阅读。backdrop-filter 把身后内容糊掉，color-mix 给出 30% 的侧栏底色
+   （保留上一行 background 实色作为 color-mix 不支持时的回退）。 */
+.dsws_trigger{position:fixed;z-index:2147483000;left:50%;top:50%;transform:translate(-50%,-50%);width:520px;max-width:calc(100vw - 24px);max-height:min(72vh,640px);box-sizing:border-box;background:var(--dsw-specific-tip);-webkit-backdrop-filter:blur(9px);backdrop-filter:blur(9px);background-color:color-mix(in srgb,var(--dsw-specific-sidebar-fill) 30%,transparent);border:1px solid var(--dsw-alias-border-l1);border-radius:12px;box-shadow:var(--dsw-shadow-lv3,0 8px 28px rgba(0,0,0,.16));overflow:hidden;display:flex;flex-direction:column;font-family:Inter,var(--dsw-font-family)}
 .dsws_toolrow{display:flex;align-items:center;gap:8px;padding:10px 10px 0}
 .dsws_mode{display:inline-flex;align-items:center;gap:2px;flex:none;background:var(--dsw-alias-interactive-bg-hover);border-radius:8px;padding:2px}
 .dsws_modeBtn{height:24px;border:none;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;border-radius:6px;padding:0 8px;font-size:12px;font-weight:500;line-height:20px}
@@ -249,18 +230,7 @@ const CSS = `
 .dsws_footItem{display:inline-flex;align-items:center}
 .dsws_footItem>.dsws_kbd{margin-right:5px}
 .dsws_footGap{flex:1;min-width:0}
-.dsws_buttonLabel{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsws_kbd{flex:none;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-width:18px;width:auto;height:18px;padding:0 4px;border:1px solid var(--dsw-alias-border-l2);border-radius:5px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font-size:10px;line-height:1;white-space:nowrap;font-variant-numeric:tabular-nums}
-/*
- * The row shares its width with the session-steward entry (order 12), so at
- * narrow sidebar widths the shortcut chip, not the label, is what yields: the
- * chip is a hint repeated by the entry tooltip and the panel footer, while the
- * label is the entry's identity. Measured in Chrome: the pair needs 230px for
- * both labels plus the chip; below that the chip's 43px is what makes the
- * difference. The query is scoped to the wide form: container-type also
- * applies inline-size containment, which zeroes a flex:none rail root.
- */
-@container (max-width: 132px){.dsws_kbd{display:none}}
 .dsws_pill{flex:none;display:inline-grid;grid-template-columns:14px max-content;align-items:center;column-gap:4px;height:26px;padding:0 10px;box-sizing:border-box;border:none;border-radius:8px;font-size:12px;font-weight:500;line-height:18px;white-space:nowrap;transition:background-color 160ms ease-out,color 160ms ease-out}
 .dsws_pill .dsws_pillIcon{display:grid;place-items:center;width:14px;height:14px}
 .dsws_pill .dsws_pillLabel{display:grid;text-align:left}
@@ -581,15 +551,11 @@ function SwitchPanel({
           }, translate(t, chip.labelKey)))),
       ]),
       children,
-      // The key bar. It advertises only chords that are actually bound: the
-      // invoke chord (see `SwitchFooter`) and Escape (see the effect above).
-      // A key cap for a key nothing listens to is a lie the user has to
+      // The key bar. It advertises only the one key that is actually bound:
+      // Escape (see the effect above). The invoke chord is gone with the hotkey
+      // — a key cap for a key nothing listens to is a lie the user has to
       // discover by pressing it.
       createElement('div', { key: 'foot', className: 'dsws_panelFoot' }, [
-        createElement('span', { key: 'invoke', className: 'dsws_footItem' }, [
-          createElement('kbd', { key: 'k', className: 'dsws_kbd' }, LABELS.invokeLabel),
-          translate(t, 'panel.footer.invoke'),
-        ]),
         createElement('span', { key: 'gap', className: 'dsws_footGap' }),
         createElement('span', { key: 'close', className: 'dsws_footItem' }, [
           createElement('kbd', { key: 'k', className: 'dsws_kbd' }, LABELS.escLabel),
@@ -622,53 +588,102 @@ function useEntryEnabled(scope: SwitchCardScope | undefined): boolean {
   return snapshot?.value?.enabled !== false
 }
 
-/** The footer entry: one icon button that opens the search panel. */
-function SwitchFooter({
+/**
+ * The borrowed trigger: the sidebar section's own search button.
+ *
+ * The host (`dsh-projects`) renders `<div class="dshp-section-actions">` with
+ * four `button.dshp-mini-button`s, the search one first, its `aria-label` being
+ * the localized 「全局搜索」. The label is matched case-insensitively so the
+ * English and other locales work too, and the first button is the fallback for a
+ * release that renames the label.
+ */
+const TRIGGER_LABEL = /搜索|search/iu
+
+/** The `dshp-section-actions` group an element belongs to, if any. */
+function actionGroupOf(element: Element | null): Element | null {
+  if (element === null || typeof element.closest !== 'function') return null
+  const group = element.closest('.dshp-section-actions')
+  if (group === null) return null
+  return group.closest('.dshp-sidebar') !== null ? group : null
+}
+
+/** The search button of one action group (label match, else first by position). */
+function triggerOf(group: Element | null): Element | null {
+  if (group === null) return null
+  const buttons = Array.from(group.querySelectorAll('button.dshp-mini-button'))
+  const labelled = buttons.find(button => TRIGGER_LABEL.test(button.getAttribute('aria-label') ?? ''))
+  return labelled ?? buttons[0] ?? null
+}
+
+/** The sidebar search button as currently rendered, when it is there. */
+function borrowedTrigger(): Element | null {
+  return triggerOf(document.querySelector('.dshp-sidebar .dshp-section-actions'))
+}
+
+/**
+ * The panel host: no entry of its own, one borrowed button.
+ *
+ * The click is intercepted in the DOCUMENT CAPTURE phase rather than on the
+ * button itself. Two reasons: the button is re-created whenever the host
+ * re-renders the sidebar, so a listener bound to the element would go stale; and
+ * the host's own handler is a React `onClick` delegated at the app root, so
+ * stopping the event before it descends means that handler never runs — the
+ * native global-search panel stays shut without the host being patched.
+ *
+ * `enabled: false` unbinds the interceptor, which hands the button back to the
+ * host: the plugin's panel stays closed and the stock search works.
+ */
+function SearchHost({
   t,
-  wide,
   open,
   scope,
-}: SwitchFooterProps & { t?: CardLocale; open: (sessionId: string) => void; scope?: SwitchCardScope }): ReactElement | null {
+}: {
+  t?: CardLocale
+  open: (sessionId: string) => void
+  scope?: SwitchCardScope
+}): ReactElement | null {
   const [openPanel, setOpenPanel] = useState(false)
   const enabled = useEntryEnabled(scope)
 
-  // The invoke chord. Bound here, next to the entry, so the shortcut exists
-  // exactly while the entry does: a sidebar button that the `enabled` switch
-  // hid, but a chord that still opened a panel out of nowhere, would be two
-  // answers to "is this plugin on". The match itself lives in `platform.ts`
-  // so the chord and the `⌘K`/`Ctrl K` chip cannot disagree.
   useEffect(() => {
-    if (!enabled) return undefined
-    const onKey = (event: KeyboardEvent): void => {
-      if (!isInvokeChord(event, LABELS.isMac)) return
-      event.preventDefault()
+    if (!enabled) {
+      setOpenPanel(false)
+      return undefined
+    }
+    const onClick = (event: MouseEvent): void => {
+      const target = event.target as Element | null
+      const group = actionGroupOf(target)
+      if (group === null || target === null || typeof target.closest !== 'function') return
+      const trigger = triggerOf(group)
+      if (trigger === null || target.closest('button.dshp-mini-button') !== trigger) return
+      // Swallow the click whole: the host's delegated handler must not run.
+      event.stopImmediatePropagation()
+      event.stopPropagation()
       setOpenPanel(true)
     }
-    document.addEventListener('keydown', onKey)
-    return () => { document.removeEventListener('keydown', onKey) }
+    document.addEventListener('click', onClick, true)
+    return () => { document.removeEventListener('click', onClick, true) }
   }, [enabled])
 
-  // Hook order is fixed above; the early return sits after every hook.
-  if (!enabled) return null
+  // Mirror the panel state onto the borrowed button: it carries the host's own
+  // `[data-active=true]` highlight, which would otherwise keep claiming "closed"
+  // while our panel is up.
+  useEffect(() => {
+    const button = borrowedTrigger()
+    if (button === null) return undefined
+    if (openPanel) {
+      button.setAttribute('data-active', 'true')
+      button.setAttribute('aria-expanded', 'true')
+    }
+    return () => {
+      button.removeAttribute('data-active')
+      button.removeAttribute('aria-expanded')
+    }
+  }, [openPanel])
 
-  return createElement('div', { className: wide ? 'dsws_root' : 'dsws_root dsws_rootRail' }, [
-    createElement('button', {
-      key: 'btn',
-      type: 'button',
-      className: wide ? 'dsws_button' : 'dsws_button dsws_buttonRail',
-      title: `${translate(t, 'panel.entry')}（${LABELS.invokeLabel}）`,
-      'aria-label': `${translate(t, 'panel.entry')}（${translate(t, 'panel.titleSearch')} / ${translate(t, 'panel.contentSearch')}，${LABELS.invokeLabel}）`,
-      'aria-expanded': openPanel,
-      onClick: () => { setOpenPanel(true) },
-    }, [
-      searchIcon(),
-      // The label and the key chip carry the same `wide` condition: a chip
-      // beside an icon-only entry would be the only thing in the collapsed
-      // rail, and `.dsws_button` clips rather than wraps.
-      wide && createElement('span', { key: 'label', className: 'dsws_buttonLabel' }, translate(t, 'panel.entry')),
-      wide && createElement('kbd', { key: 'key', className: 'dsws_kbd' }, LABELS.invokeLabel),
-    ]),
-    openPanel && createElement(SwitchPanel, {
+  if (!enabled) return null
+  return openPanel
+    ? createElement(SwitchPanel, {
       key: 'panel',
       t,
       onClose: () => { setOpenPanel(false) },
@@ -676,8 +691,37 @@ function SwitchFooter({
         setOpenPanel(false)
         open(sessionId)
       },
-    }),
-  ])
+    })
+    : null
+}
+
+/**
+ * Mount the panel host into its own React root.
+ *
+ * The plugin registers no slot any more, so nothing else renders its React
+ * tree: a detached container in `document.body` plus `createRoot` is the whole
+ * surface. The container itself stays empty (the panel portals its nodes) but
+ * keeps the root alive across open/close.
+ *
+ * @param props - translator, session opener, and the shared settings scope.
+ * @returns the disposer that unmounts the root and removes the container.
+ */
+function mountSearchHost(props: {
+  t?: CardLocale
+  open: (sessionId: string) => void
+  scope?: SwitchCardScope
+}): () => void {
+  if (typeof document === 'undefined' || document.body === null) return () => {}
+  const container = document.createElement('div')
+  container.dataset.plugin = 'dsh-search-index'
+  container.dataset.pluginHost = 'search-panel'
+  document.body.appendChild(container)
+  const root = createRoot(container)
+  root.render(createElement(SearchHost, props))
+  return () => {
+    root.unmount()
+    if (container.parentNode !== null) container.parentNode.removeChild(container)
+  }
 }
 
 /** ------------------------------------------------------------------ helpers */
@@ -709,29 +753,6 @@ function typeLabel(t: CardLocale | undefined, type: string): string {
   return type
 }
 
-/** Inline search icon (stroke aligned with the product's 1.75 hairline). */
-function searchIcon(): ReactElement {
-  return createElement('svg', {
-    width: 14,
-    height: 14,
-    viewBox: '0 0 16 16',
-    fill: 'none',
-    'aria-hidden': true,
-  }, createElement('circle', {
-    cx: 7,
-    cy: 7,
-    r: 4.5,
-    stroke: 'currentColor',
-    strokeWidth: 1.75,
-    fill: 'none',
-  }), createElement('path', {
-    d: 'M10.5 10.5 L14 14',
-    stroke: 'currentColor',
-    strokeWidth: 1.75,
-    strokeLinecap: 'round',
-  }))
-}
-
 /** ------------------------------------------------------------------ plugin */
 
 /**
@@ -752,8 +773,8 @@ export const SETTINGS_SIBLING_SEAT = 'settings.plugins.tab'
 export const inject = ['slots', 'locale']
 
 /**
- * Client plugin body: dictionaries, the plugin settings card, and the
- * (disabled upstream) footer search panel entry.
+ * Client plugin body: dictionaries, the settings card, and the search panel
+ * that hijacks the sidebar section's own search button.
  * @param ctx - client plugin context (slots, optional locale/settingsScope/sessions).
  */
 export function apply(ctx: Context): void {
@@ -771,8 +792,6 @@ export function apply(ctx: Context): void {
   // switches are still followed.
   const familyLabel = (locale as unknown as { bind?: (n: string) => CardLocale } | undefined)?.bind?.(NS)
 
-  const slots = ctx.get('slots') as SwitchSlotsService | undefined
-  if (slots === undefined) return
   // Session opening resolves through `openSessionThrough` at click time: this
   // plugin applies before the session-controller / ui-workspace client modules
   // in the load order, so an eager service lookup captured undefined and every
@@ -785,9 +804,9 @@ export function apply(ctx: Context): void {
     openSessionThrough((name) => ctx.get(name), sessionId)
   }
 
-  // Resolved before the footer entry because that entry is the thing the
-  // `enabled` switch controls: the switch and the entry have to read the same
-  // binding, or the switch silently goes back to controlling nothing.
+  // The `enabled` switch binding. Resolved before the panel host because the
+  // switch and the borrowed button have to read the same binding: otherwise the
+  // switch silently goes back to controlling nothing.
   // 0.1.7：configForms 以 entry id 取句柄；旧宿主回退按命名空间绑定。
   const configForms = ctx.get('configForms') as SwitchConfigForms<SwitchSearchConfig> | undefined
   const settingsScope = ctx.get('settingsScope') as SwitchSettingsScope<SwitchSearchConfig> | undefined
@@ -797,14 +816,19 @@ export function apply(ctx: Context): void {
       namespace: SWITCH_SEARCH_SETTINGS_NAMESPACE,
     })
 
-  // The sidebar footer entry: the search panel (title/content toggle), one
-  // bottom-bar button beside the official settings trigger. The archived-
-  // sessions viewer moved to dsh-session-steward (养老院) — this package no
+  // The panel host: no slot, no entry of its own — it borrows the sidebar
+  // section's search button (see `SearchHost`) and renders into a root of its
+  // own, so the panel also comes up on a host that offers no slots service.
+  ctx.effect(
+    () => mountSearchHost({ t: familyLabel, open, scope: entryScope }),
+    'dsh-search-index: search panel host',
+  )
+
+  // Slots carry the two settings seats below and nothing else: the archived-
+  // sessions viewer moved to dsh-session-steward (养老院), and this package no
   // longer owns any session-history UI.
-  slots.inject('sidebar.footer.action', () => slots.register(
-    { name: 'sidebar.footer.action', id: 'dsh-search-index', order: 5 },
-    (props: SwitchFooterProps) => createElement(SwitchFooter, { ...props, open, scope: entryScope }),
-  ), 'dsh-search-index: sidebar footer entry')
+  const slots = ctx.get('slots') as SwitchSlotsService | undefined
+  if (slots === undefined) return
 
   // 插件族共用设置 tab（dsh-thinking-levels 的顶级「起子插件设置」节声明该子
   // 席位）。thinking-levels 缺席时本 inject 静默等待，不阻塞客户端半；设置卡

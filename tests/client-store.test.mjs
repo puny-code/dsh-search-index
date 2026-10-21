@@ -1,19 +1,15 @@
 #!/usr/bin/env node
 /**
- * The plugin settings card seat, proven against the built client bundle.
+ * The panel host + settings bindings, proven against the built client bundle.
  *
  * What it proves (and what it does NOT):
- * - `lib/client.js` materializes without any release-specific specifier and
- *   registers exactly one sidebar entry plus one settings card (dual `id`+`key`,
- *   no `settings.general.item` row, no store seat).
- * - The card lands on WHICHEVER settings seat the host declares: `settings.plugin.item`
- *   on the ≤0.1.2 line, `settings.plugins.tab` on the 0.1.5 line — and only one
- *   of the two ever fires, because `slots.inject` runs its callback only once
- *   the named seat is DECLARED. The fake below models that rule; a fake that
- *   fires every `inject` models a host that declares everything, which no real
- *   host does, and would hide exactly the regression this covers.
- * - The card's inject factory binds the `switch-search` settings namespace
- *   through the settingsScope service; when that service is absent the card
+ * - `lib/client.js` materializes without any release-specific specifier.
+ * - 0.7.0 swapped the slot seat for a DOM hijack: the plugin registers NO seat
+ *   at all, so the sidebar section's own search button is borrowed instead (see
+ *   `SearchHost` in `src/client/index.ts`). This test pins that — a re-added
+ *   `sidebar.footer.action` would put a second button back.
+ * - The `enabled` switch still binds to the `switch-search` settings namespace
+ *   through the settingsScope service; when that service is absent the panel
  *   degrades to a read-only DEFAULT_CONFIG scope instead of crashing.
  * - It does NOT render React, and it does NOT prove GUI behaviour.
  *
@@ -38,17 +34,21 @@ const TABLE = {
     useRef: (v) => ({ current: v }), useSyncExternalStore: (sub, get) => get(),
   },
   'react-dom': { createPortal: () => ({}) },
+  // The panel host mounts into its own root (no slot any more): the factory
+  // resolves `createRoot` and the bundle must degrade to a no-op root here.
+  'react-dom/client': { createRoot: () => ({ render: () => {}, unmount: () => {} }) },
 }
 
-/** Minimal DOM so the stylesheet effect can run headless. */
+/** Minimal DOM so the stylesheet effect and the panel host can run headless. */
 function documentStub() {
   const el = () => ({
-    dataset: {}, style: {}, textContent: '', attributes: {},
+    dataset: {}, style: {}, textContent: '', attributes: {}, parentNode: null,
     setAttribute() {}, removeAttribute() {}, remove() {}, appendChild() {},
     querySelectorAll: () => [], closest: () => null,
   })
   return {
     head: { appendChild: () => {} },
+    body: { appendChild: () => {} },
     documentElement: {},
     createElement: () => el(),
     querySelector: () => null,
@@ -168,19 +168,17 @@ check('bundle materializes with only baseline specifiers', () => {
   assert.equal(typeof exports.apply, 'function', 'client half exports no apply()')
 })
 
-check('registers only the sidebar footer entry; no settings seat on 0.1.7', () => {
+check('registers NO slot seat; the entry is a DOM hijack, not a seat (0.7.0)', () => {
   const ledger = []
   const bindings = []
   const { ctx } = clientCtx(ledger, bindings)
   exports.apply(ctx)
-  // 0.1.7: the settings card seat is gone; the form comes from the host half's
-  // .volatile() fields. Exactly one sidebar entry remains.
-  assert.equal(ledger.length, 1, `expected only the search entry, got ${ledger.length}`)
-  assert.equal(ledger[0].name, 'sidebar.footer.action', 'the sidebar footer search entry must be registered')
-  assert.equal(ledger[0].id, PLUGIN_ID)
+  // 0.7.0: the plugin no longer owns an entry of its own — it borrows the
+  // sidebar section's own search button, so there is nothing to register.
+  assert.equal(ledger.length, 0, `expected no seat at all, got ${ledger.length}: ${JSON.stringify(ledger.map((o) => o.name))}`)
 })
 
-check('footer scope prefers configForms and falls back to the legacy binding', () => {
+check('borrowed entry prefers configForms and falls back to the legacy binding', () => {
   const formsLedger = []
   const formsBindings = []
   const { ctx } = clientCtx(formsLedger, formsBindings)
@@ -197,11 +195,11 @@ check('footer scope prefers configForms and falls back to the legacy binding', (
 // Regression guard for "the same card shown twice": no bundle may register more
 // than one seat, and on 0.1.7 none at all.
 
-check('registers exactly ONE sidebar seat and zero settings seats even on the 0.1.2 line', () => {
+check('registers zero seats even on the 0.1.2 line (all four seats declared)', () => {
   const ledger = []
   const { ctx } = clientCtx(ledger, [], { declaredSlots: HOST_012_SEATS })
   exports.apply(ctx)
-  assert.equal(ledger.length, 1, `expected only the search entry, got ${ledger.length}: ${JSON.stringify(ledger.map((o) => o.name))}`)
+  assert.equal(ledger.length, 0, `expected no seat, got ${ledger.length}: ${JSON.stringify(ledger.map((o) => o.name))}`)
   assert.deepEqual(
     ledger.filter((o) => String(o.name).startsWith('settings.')).map((o) => o.name),
     [],

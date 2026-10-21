@@ -8,7 +8,7 @@ export declare const zh: {
     readonly 'card.unavailable': "设置命名空间不可用：请确认插件已装配进 profile。";
     readonly 'card.readonly': "只读";
     readonly 'card.enabled': "启用会话搜索";
-    readonly 'card.enabled.desc': "在侧边栏底部显示\"搜索\"入口。";
+    readonly 'card.enabled.desc': "点击侧边栏分区标题旁的搜索按钮时，用本插件的搜索面板代替宿主自带的搜索。";
     readonly 'card.defaultMode': "默认搜索模式";
     readonly 'card.defaultMode.desc': "面板打开时默认进入标题搜索还是内容搜索。";
     readonly 'card.mode.title': "标题";
