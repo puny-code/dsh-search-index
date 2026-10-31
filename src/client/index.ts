@@ -179,9 +179,9 @@ const CSS = `
    各自的默认布局。 */
 /* 面板（.dsws_trigger）改为毛玻璃底板：原来只有 --dsw-specific-tip 实色，
    在部分宿主主题下该变量解析为空 → 面板全透明，弹窗文字与下层正文叠在一起
-   无法阅读。backdrop-filter 把身后内容糊掉，color-mix 给出 30% 的侧栏底色
+   无法阅读。backdrop-filter 把身后内容糊掉，color-mix 给出 55% 的侧栏底色
    （保留上一行 background 实色作为 color-mix 不支持时的回退）。 */
-.dsws_trigger{position:fixed;z-index:2147483000;left:50%;top:50%;transform:translate(-50%,-50%);width:520px;max-width:calc(100vw - 24px);max-height:min(72vh,640px);box-sizing:border-box;background:var(--dsw-specific-tip);-webkit-backdrop-filter:blur(9px);backdrop-filter:blur(9px);background-color:color-mix(in srgb,var(--dsw-specific-sidebar-fill) 30%,transparent);border:1px solid var(--dsw-alias-border-l1);border-radius:12px;box-shadow:var(--dsw-shadow-lv3,0 8px 28px rgba(0,0,0,.16));overflow:hidden;display:flex;flex-direction:column;font-family:Inter,var(--dsw-font-family)}
+.dsws_trigger{position:fixed;z-index:2147483000;left:50%;top:50%;transform:translate(-50%,-50%);width:520px;max-width:calc(100vw - 24px);max-height:min(72vh,640px);box-sizing:border-box;background:var(--dsw-specific-tip);-webkit-backdrop-filter:blur(9px);backdrop-filter:blur(9px);background-color:color-mix(in srgb,var(--dsw-specific-sidebar-fill) 55%,transparent);border:1px solid var(--dsw-alias-border-l1);border-radius:12px;box-shadow:var(--dsw-shadow-lv3,0 8px 28px rgba(0,0,0,.16));overflow:hidden;display:flex;flex-direction:column;font-family:Inter,var(--dsw-font-family)}
 .dsws_toolrow{display:flex;align-items:center;gap:8px;padding:10px 10px 0}
 .dsws_mode{display:inline-flex;align-items:center;gap:2px;flex:none;background:var(--dsw-alias-interactive-bg-hover);border-radius:8px;padding:2px}
 .dsws_modeBtn{height:24px;border:none;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;border-radius:6px;padding:0 8px;font-size:12px;font-weight:500;line-height:20px}
@@ -599,6 +599,13 @@ function useEntryEnabled(scope: SwitchCardScope | undefined): boolean {
  */
 const TRIGGER_LABEL = /搜索|search/iu
 
+/** Match the host's CSS-module search button without depending on its hash. */
+export function isNativeSearchButton(button: Pick<Element, 'matches' | 'getAttribute'>): boolean {
+  return button.matches('button[class*="_searchButton"]')
+    && /搜索|search/iu.test(button.getAttribute('aria-label') ?? '')
+    && /(?:Control|Meta)\+K/iu.test(button.getAttribute('aria-keyshortcuts') ?? '')
+}
+
 /** The `dshp-section-actions` group an element belongs to, if any. */
 function actionGroupOf(element: Element | null): Element | null {
   if (element === null || typeof element.closest !== 'function') return null
@@ -618,6 +625,7 @@ function triggerOf(group: Element | null): Element | null {
 /** The sidebar search button as currently rendered, when it is there. */
 function borrowedTrigger(): Element | null {
   return triggerOf(document.querySelector('.dshp-sidebar .dshp-section-actions'))
+    ?? Array.from(document.querySelectorAll('button[class*="_searchButton"]')).find(isNativeSearchButton) ?? null
 }
 
 /**
@@ -652,10 +660,12 @@ function SearchHost({
     }
     const onClick = (event: MouseEvent): void => {
       const target = event.target as Element | null
+      if (target === null || typeof target.closest !== 'function') return
+      const nativeButton = target.closest('button[class*="_searchButton"]')
       const group = actionGroupOf(target)
-      if (group === null || target === null || typeof target.closest !== 'function') return
-      const trigger = triggerOf(group)
-      if (trigger === null || target.closest('button.dshp-mini-button') !== trigger) return
+      const projectsButton = triggerOf(group)
+      const isProjectsSearch = projectsButton !== null && target.closest('button.dshp-mini-button') === projectsButton
+      if (!isProjectsSearch && (nativeButton === null || !isNativeSearchButton(nativeButton))) return
       // Swallow the click whole: the host's delegated handler must not run.
       event.stopImmediatePropagation()
       event.stopPropagation()
@@ -670,14 +680,16 @@ function SearchHost({
   // while our panel is up.
   useEffect(() => {
     const button = borrowedTrigger()
-    if (button === null) return undefined
-    if (openPanel) {
-      button.setAttribute('data-active', 'true')
-      button.setAttribute('aria-expanded', 'true')
-    }
+    if (button === null || !openPanel) return undefined
+    const active = button.getAttribute('data-active')
+    const expanded = button.getAttribute('aria-expanded')
+    button.setAttribute('data-active', 'true')
+    button.setAttribute('aria-expanded', 'true')
     return () => {
-      button.removeAttribute('data-active')
-      button.removeAttribute('aria-expanded')
+      if (active === null) button.removeAttribute('data-active')
+      else button.setAttribute('data-active', active)
+      if (expanded === null) button.removeAttribute('aria-expanded')
+      else button.setAttribute('aria-expanded', expanded)
     }
   }, [openPanel])
 

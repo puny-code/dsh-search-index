@@ -62,6 +62,8 @@ declare module 'cordis' {
         locale?: SwitchLocaleService;
     }
 }
+/** Match the host's CSS-module search button without depending on its hash. */
+export declare function isNativeSearchButton(button: Pick<Element, 'matches' | 'getAttribute'>): boolean;
 /** ------------------------------------------------------------------ plugin */
 /**
  * Sibling-tab seat (`settings.plugins.tab`). **Deliberately NOT registered.**

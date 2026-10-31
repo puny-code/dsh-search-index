@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1
+
+- 将面板侧栏底色混合比例从 30% 调整为 55%。
+- 保留 dsh-projects 按钮支持，并接管 DSH 原生搜索会话按钮，不依赖 CSS Module 哈希。
+- 引擎和客户端 peer 声明新增 DSH 0.2.1-rc.5；已完成构建与自动化测试，实际宿主端到端兼容性仍待验证。
+
 ## 0.7.0 (2026-10-21)
 
 - **入口改为接管原生搜索按钮**：不再注册 `sidebar.footer.action` 席位，侧栏底部那枚自建按钮整块删除（含 `.dsws_root` / `.dsws_button*` 全套样式与 `[class*=footerActions]`、`.lc-ov-entry` 第三方矫正）。改为在**文档捕获阶段**拦下「会话」分区标题旁的原生搜索按钮（`button.dshp-mini-button`，`aria-label` 匹配 `搜索` / `search`，失配回退该分组首个按钮）：`stopImmediatePropagation()` 让宿主（dsh-projects）自己的 `onClick` 不执行、其搜索面板不弹出，本插件面板接管点击。宿主重绘按钮不会让监听失效（监听挂在 document 上，不挂元素）。面板改由 `createRoot` 挂到 body 上自建的容器里，因此**没有 slots 服务也能启用**。
